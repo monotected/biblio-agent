@@ -240,7 +240,7 @@ def process_pdfs(pdf_files, is_demo, progress=gr.Progress()):
         yield f"Готово: {out_name}", None, render_console(console_html)
 
     if not output_files:
-        yield "❌ Ни один файл не обработан", None, render_console(console_html)
+        yield "Ошибка: ни один файл не обработан", None, render_console(console_html)
         return
 
     zip_path = os.path.join(output_dir, "biblio_results.zip")
@@ -249,7 +249,7 @@ def process_pdfs(pdf_files, is_demo, progress=gr.Progress()):
             zipf.write(fp, os.path.basename(fp))
 
     console_html += log_success(f"Архив собран: {len(output_files)} файлов")
-    yield "✅ Бибописания готовы! Скачайте архив.", zip_path, render_console(console_html)
+    yield "Бибописания готовы! Скачайте архив.", zip_path, render_console(console_html)
 
 # --- Агент 2: Реферат-Про ---
 def process_referats(pdf_files, is_demo, progress=gr.Progress()):
@@ -321,7 +321,7 @@ def process_referats(pdf_files, is_demo, progress=gr.Progress()):
             zipf.write(fp, os.path.basename(fp))
 
     console_html += log_success(f"Архив собран: {len(output_files)} файлов")
-    yield "✅ Рефераты готовы! Скачайте архив.", last_text, zip_path, render_console(console_html)
+    yield "Рефераты готовы! Скачайте архив.", last_text, zip_path, render_console(console_html)
 
 # --- Данные экосистемы ---
 AGENTS_DATA = [
@@ -385,23 +385,6 @@ AGENTS_DATA = [
     ]}
 ]
 
-def render_cluster_html(cluster):
-    html = f"<div class='cluster-block'><h3>{cluster['cluster']}</h3><div class='agents-grid'>"
-    for agent in cluster['agents']:
-        if agent.get('active'):
-            badge = "<span class='badge-active'>Активен</span>"
-        else:
-            badge = "<span class='badge-beta'>В разработке</span>"
-        html += f"""
-            <div class='agent-card'>
-                <h4>{agent['name']}</h4>
-                <p>{agent['desc']}</p>
-                <div class='card-footer'>{badge}</div>
-            </div>
-        """
-    html += "</div></div>"
-    return html
-
 custom_css = """
 @import url('https://fonts.googleapis.com/css2?family=PT+Sans&family=PT+Serif&family=JetBrains+Mono:wght@400;700&display=swap');
 body { background-color: #f0f2f5; }
@@ -431,8 +414,9 @@ h1, h2, h3 { font-family: 'PT Serif', 'Georgia', serif !important; color: #2a4d6
 
 .cta-btn { max-width: 440px !important; margin: 0 auto 30px auto !important; display: flex !important; justify-content: center !important; }
 
-.open-agent-btn { background: #eef2f6 !important; border: 1px solid #2a4d6e !important; color: #2a4d6e !important; font-weight: bold !important; }
-.open-agent-btn:hover { background: #2a4d6e !important; color: white !important; }
+.agent-card-btn { white-space: pre-line !important; text-align: left !important; justify-content: flex-start !important; padding: 20px !important; min-height: 130px !important; border: 1px solid #e0e0e0 !important; border-radius: 4px !important; background: #ffffff !important; font-size: 14px !important; color: #555555 !important; font-weight: normal !important; transition: all 0.3s; }
+.agent-btn-active:hover { border-color: #2a4d6e !important; box-shadow: 0 5px 15px rgba(42,77,110,0.15); transform: translateY(-3px); }
+.agent-btn-inactive { border-style: dashed !important; opacity: 0.75; }
 
 .hero-section { text-align: center; padding: 40px 20px; background: #f8f9fa; border: 1px solid #e0e0e0; margin-bottom: 30px; }
 .hero-section h1 { font-size: 34px !important; margin-bottom: 10px !important; }
@@ -463,7 +447,23 @@ h1, h2, h3 { font-family: 'PT Serif', 'Georgia', serif !important; color: #2a4d6
 
 .gr-button-primary { background-color: #2a4d6e !important; border: none !important; border-radius: 4px !important; color: white !important; font-weight: bold !important; }
 .gr-button-secondary { background-color: #ffffff !important; border: 2px solid #2a4d6e !important; border-radius: 4px !important; color: #2a4d6e !important; font-weight: bold !important; }
-label { color: #4c5a62 !important; font-weight: bold !important; }
+label { color: #333d44 !important; font-weight: bold !important; }
+
+/* Темнее описательные тексты (gr.Markdown) */
+.gradio-container .prose { color: #37424a !important; }
+.gradio-container .prose p { color: #37424a !important; }
+
+/* Зелёные уменьшенные кнопки сайдбара */
+.nav-btn.nav-btn-green { font-size: 13px !important; padding: 8px 14px !important; background: #e8f5e9 !important; color: #1b5e20 !important; border: 1px solid #a5d6a7 !important; }
+.nav-btn.nav-btn-green:hover { background: #c8e6c9 !important; }
+
+/* Зелёная подсветка активных агентов в кластерах */
+.agent-btn-active { border: 1px solid #66bb6a !important; background: #eaf7ea !important; }
+.agent-btn-active:hover { background: #d5eed5 !important; }
+.agent-btn-active::before { content: "\25CF  "; color: #2e7d32; font-weight: bold; }
+.agent-btn-inactive::before { content: "\25CB  "; color: #95a1aa; font-weight: bold; }
+.gradio-container .prose strong { color: #1f2a30 !important; }
+.gradio-container .prose b { color: #1f2a30 !important; }
 """
 
 # --- Навигация ---
@@ -475,10 +475,10 @@ with gr.Blocks(css=custom_css) as demo:
         with gr.Column(scale=1, min_width=230, elem_classes=["sidebar"]):
             gr.HTML("<div class='sidebar-title'>Платформа<br>ИИ-Агентов</div><div class='sidebar-subtitle'>БЕН РАН</div>")
 
-            nav_home = gr.Button("🏠 Главная", variant="primary", elem_classes=["nav-btn"])
-            nav_clusters = gr.Button("🗂 Кластеры агентов", variant="secondary", elem_classes=["nav-btn", "nav-btn-idle"])
-            nav_biblio = gr.Button("📄 Библио-Граф", variant="secondary", elem_classes=["nav-btn", "nav-btn-idle"])
-            nav_referat = gr.Button("📝 Реферат-Про", variant="secondary", elem_classes=["nav-btn", "nav-btn-idle"])
+            nav_home = gr.Button("Главная", variant="primary", elem_classes=["nav-btn"])
+            nav_clusters = gr.Button("Кластеры агентов", variant="secondary", elem_classes=["nav-btn", "nav-btn-idle"])
+            nav_biblio = gr.Button("Библио-Граф", variant="secondary", elem_classes=["nav-btn", "nav-btn-idle", "nav-btn-green"])
+            nav_referat = gr.Button("Реферат-Про", variant="secondary", elem_classes=["nav-btn", "nav-btn-idle", "nav-btn-green"])
 
             gr.HTML("<div class='sidebar-sep'></div><div class='sidebar-subtitle' style='margin-bottom:10px;'>В разработке</div>")
             for name in ["Мета-Мастер", "Реестр-Бот", "Рукопись-ИИ"]:
@@ -496,14 +496,11 @@ with gr.Blocks(css=custom_css) as demo:
                     <h1>Нейросетевой агрегатор библиотечной деятельности</h1>
                     <p>Единая интеллектуальная платформа БЕН РАН, объединяющая специализированные ИИ-агенты для автоматизации ключевых процессов современной научной библиотеки. Агрегатор представляет собой модульную экосистему, в которой каждый агент решает узкоспециализированную задачу: от создания библиографических записей и генерации аннотаций до семантического поиска, аудита каталога и формирования тематических коллекций.</p>
                     <p>В основе лежит многокомпонентная нейросетевая модель, построенная на архитектуре трансформеров с поддержкой многоязычной обработки естественного языка (NLP), векторных представлений документов, механизмов извлечения структурированных метаданных и глубокого семантического анализа.</p>
-                    <div class="local-badge">🔒 100% локально — данные не покидают ваш компьютер</div>
+                    <div class="local-badge">100% локально — данные не покидают ваш компьютер</div>
                 </div>
                 """)
                 home_cta = gr.Button("Перейти к экосистеме ИИ-агентов →", variant="primary", elem_classes=["cta-btn"])
-                with gr.Row():
-                    card_biblio = gr.Button("📄  Библио-Граф  · активен\nБиблиографические записи из PDF (TXT + BibTeX)", elem_classes=["big-card"])
-                    card_referat = gr.Button("📝  Реферат-Про  · активен\nСтруктурированные рефераты научных статей", elem_classes=["big-card"])
-                gr.HTML("<div class='cluster-block' style='margin-top:40px;'><h3>⚙️ Технологии</h3></div>")
+                gr.HTML("<div class='cluster-block' style='margin-top:40px;'><h3>Технологии</h3></div>")
                 with gr.Row():
                     gr.HTML("""
                     <div class='agents-grid' style='width:100%;'>
@@ -515,25 +512,30 @@ with gr.Blocks(css=custom_css) as demo:
 
             # --- Страница: Кластеры ---
             with gr.Column(visible=False) as page_clusters:
-                gr.Markdown("## 🤖 Перечень нейросетевых кластеров")
+                gr.Markdown("## Перечень нейросетевых кластеров")
                 gr.Markdown("Платформа включает 9 ключевых кластеров, объединяющих более 30 специализированных ИИ-агентов для автоматизации библиотечной деятельности БЕН РАН.")
                 cluster_nav_buttons = []
                 for cluster in AGENTS_DATA:
-                    gr.HTML(render_cluster_html(cluster))
-                    for a in cluster["agents"]:
-                        if a.get("active"):
-                            btn = gr.Button(f"▶  Открыть агента {a['name']}", elem_classes=["open-agent-btn"])
-                            cluster_nav_buttons.append((a["page"], btn))
+                    gr.HTML(f"<div class='cluster-block'><h3>{cluster['cluster']}</h3></div>")
+                    with gr.Row():
+                        for a in cluster["agents"]:
+                            status = "Активен — нажмите, чтобы открыть" if a.get("active") else "В разработке"
+                            label = a["name"] + "\n\n" + a["desc"] + "\n\n" + status
+                            if a.get("active"):
+                                btn = gr.Button(label, elem_classes=["agent-card-btn", "agent-btn-active"], min_width=220)
+                                cluster_nav_buttons.append((a["page"], btn))
+                            else:
+                                gr.Button(label, interactive=False, elem_classes=["agent-card-btn", "agent-btn-inactive"], min_width=220)
 
             # --- Страница: Библио-Граф ---
             with gr.Column(visible=False) as page_biblio:
-                gr.Markdown("## 📄 Библио-Граф — пакетная обработка научных статей")
+                gr.Markdown("## Библио-Граф — пакетная обработка научных статей")
                 gr.Markdown("Загрузите один или несколько PDF-файлов. Агент извлечёт библиографические данные и упакует их в **TXT** и **BibTeX**.")
                 with gr.Row():
                     pdf_input = gr.Files(label="Исходные файлы (PDF)", file_count="multiple", file_types=[".pdf"])
                 with gr.Row():
-                    run_btn = gr.Button("🧠 Запустить ИИ-Агента", variant="primary")
-                    demo_btn = gr.Button("⚙️ Демо-режим (Витрина)", variant="secondary")
+                    run_btn = gr.Button("Запустить ИИ-Агента", variant="primary")
+                    demo_btn = gr.Button("Демо-режим (Витрина)", variant="secondary")
                 gr.Markdown("### Журнал обработки")
                 biblio_console = gr.HTML(render_console("<div class='log-line'>> Ожидание инициализации системы...</div>"))
                 with gr.Row():
@@ -546,13 +548,13 @@ with gr.Blocks(css=custom_css) as demo:
 
             # --- Страница: Реферат-Про ---
             with gr.Column(visible=False) as page_referat:
-                gr.Markdown("## 📝 Реферат-Про — генерация рефератов статей")
+                gr.Markdown("## Реферат-Про — генерация рефератов статей")
                 gr.Markdown("Загрузите PDF научной статьи. Агент сформирует структурированный реферат: библиографическая запись, аннотация, цель, методы, результаты, выводы.")
                 with gr.Row():
                     ref_pdf_input = gr.Files(label="Исходные файлы (PDF)", file_count="multiple", file_types=[".pdf"])
                 with gr.Row():
-                    ref_run_btn = gr.Button("🧠 Сгенерировать рефераты", variant="primary")
-                    ref_demo_btn = gr.Button("⚙️ Демо-режим (Витрина)", variant="secondary")
+                    ref_run_btn = gr.Button("Сгенерировать рефераты", variant="primary")
+                    ref_demo_btn = gr.Button("Демо-режим (Витрина)", variant="secondary")
                 gr.Markdown("### Журнал обработки")
                 ref_console = gr.HTML(render_console("<div class='log-line'>> Ожидание инициализации системы...</div>"))
                 gr.Markdown("### Предпросмотр реферата")
@@ -584,8 +586,6 @@ with gr.Blocks(css=custom_css) as demo:
     nav_biblio.click(navigate("biblio"), inputs=None, outputs=NAV_OUTPUTS)
     nav_referat.click(navigate("referat"), inputs=None, outputs=NAV_OUTPUTS)
     home_cta.click(navigate("clusters"), inputs=None, outputs=NAV_OUTPUTS)
-    card_biblio.click(navigate("biblio"), inputs=None, outputs=NAV_OUTPUTS)
-    card_referat.click(navigate("referat"), inputs=None, outputs=NAV_OUTPUTS)
     for target, btn in cluster_nav_buttons:
         btn.click(navigate(target), inputs=None, outputs=NAV_OUTPUTS)
 
