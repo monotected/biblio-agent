@@ -565,28 +565,29 @@ with gr.Blocks(css=custom_css) as demo:
                 ref_run_btn.click(fn=process_referats, inputs=[ref_pdf_input, gr.State(False)], outputs=[ref_status, ref_preview, ref_file, ref_console])
                 ref_demo_btn.click(fn=process_referats, inputs=[ref_pdf_input, gr.State(True)], outputs=[ref_status, ref_preview, ref_file, ref_console])
 
-# --- Логика навигации (после создания всех компонентов) ---
-NAV_BUTTONS = [("home", nav_home), ("clusters", nav_clusters), ("biblio", nav_biblio), ("referat", nav_referat)]
-NAV_PAGES = [("home", page_home), ("clusters", page_clusters), ("biblio", page_biblio), ("referat", page_referat)]
 
-def navigate(target):
-    def _nav():
-        btn_updates = [gr.update(variant="primary" if k == target else "secondary") for k, _ in NAV_BUTTONS]
-        page_updates = [gr.update(visible=(k == target)) for k, _ in NAV_PAGES]
-        return btn_updates + page_updates
-    return _nav
+    # --- Логика навигации (внутри Blocks-контекста!) ---
+    NAV_BUTTONS = [("home", nav_home), ("clusters", nav_clusters), ("biblio", nav_biblio), ("referat", nav_referat)]
+    NAV_PAGES = [("home", page_home), ("clusters", page_clusters), ("biblio", page_biblio), ("referat", page_referat)]
 
-NAV_OUTPUTS = [b for _, b in NAV_BUTTONS] + [p for _, p in NAV_PAGES]
+    def navigate(target):
+        def _nav():
+            btn_updates = [gr.update(variant="primary" if k == target else "secondary") for k, _ in NAV_BUTTONS]
+            page_updates = [gr.update(visible=(k == target)) for k, _ in NAV_PAGES]
+            return btn_updates + page_updates
+        return _nav
 
-nav_home.click(navigate("home"), inputs=None, outputs=NAV_OUTPUTS)
-nav_clusters.click(navigate("clusters"), inputs=None, outputs=NAV_OUTPUTS)
-nav_biblio.click(navigate("biblio"), inputs=None, outputs=NAV_OUTPUTS)
-nav_referat.click(navigate("referat"), inputs=None, outputs=NAV_OUTPUTS)
-home_cta.click(navigate("clusters"), inputs=None, outputs=NAV_OUTPUTS)
-card_biblio.click(navigate("biblio"), inputs=None, outputs=NAV_OUTPUTS)
-card_referat.click(navigate("referat"), inputs=None, outputs=NAV_OUTPUTS)
-for target, btn in cluster_nav_buttons:
-    btn.click(navigate(target), inputs=None, outputs=NAV_OUTPUTS)
+    NAV_OUTPUTS = [b for _, b in NAV_BUTTONS] + [p for _, p in NAV_PAGES]
+
+    nav_home.click(navigate("home"), inputs=None, outputs=NAV_OUTPUTS)
+    nav_clusters.click(navigate("clusters"), inputs=None, outputs=NAV_OUTPUTS)
+    nav_biblio.click(navigate("biblio"), inputs=None, outputs=NAV_OUTPUTS)
+    nav_referat.click(navigate("referat"), inputs=None, outputs=NAV_OUTPUTS)
+    home_cta.click(navigate("clusters"), inputs=None, outputs=NAV_OUTPUTS)
+    card_biblio.click(navigate("biblio"), inputs=None, outputs=NAV_OUTPUTS)
+    card_referat.click(navigate("referat"), inputs=None, outputs=NAV_OUTPUTS)
+    for target, btn in cluster_nav_buttons:
+        btn.click(navigate(target), inputs=None, outputs=NAV_OUTPUTS)
 
 if __name__ == "__main__":
     demo.launch(inbrowser=True)
