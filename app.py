@@ -7,6 +7,7 @@ import time
 import random
 from datetime import datetime
 from openai import OpenAI
+import httpx
 
 # --- Конфигурация ---
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
@@ -15,6 +16,11 @@ MAX_CHARS = 6000        # для бибописания (данные в нач�
 MAX_CHARS_REFERAT = 8000  # для реферата нужен больший охват
 
 client = OpenAI(base_url=OLLAMA_BASE_URL, api_key="ollama")
+
+RUNTIME_CONFIG = {"model": os.getenv("OLLAMA_MODEL", "llama3"), "base_url": OLLAMA_BASE_URL}
+
+def get_model():
+    return RUNTIME_CONFIG["model"]
 
 AGENT_PROMPT = """Ты — библиотечный ИИ-агент для извлечения библиографических данных.
 Извлеки: 1. Название журнала 2. Том 3. Выпуск 4. Год 5. Название статьи 6. Автора 7. Организацию 8. Название статьи на англ 9. Автора на англ.
@@ -48,7 +54,7 @@ def extract_text_from_pdf(pdf_path, max_pages=3):
 def call_biblio_agent(text):
     try:
         response = client.chat.completions.create(
-            model=OLLAMA_MODEL,
+            model=get_model(),
             messages=[{"role": "user", "content": AGENT_PROMPT + text[:MAX_CHARS]}],
             temperature=0.1,
             format="json"
@@ -57,12 +63,12 @@ def call_biblio_agent(text):
     except json.JSONDecodeError:
         return {"error": "Модель вернула некорректный JSON. Попробуйте другую модель."}
     except Exception as e:
-        return {"error": f"Ошибка Ollama: {e}. Проверьте: ollama run {OLLAMA_MODEL}"}
+        return {"error": f"Ошибка Ollama: {e}. Проверьте: ollama run {get_model()}"}
 
 def call_referat_agent(text):
     try:
         response = client.chat.completions.create(
-            model=OLLAMA_MODEL,
+            model=get_model(),
             messages=[{"role": "user", "content": REFERAT_PROMPT + text[:MAX_CHARS_REFERAT]}],
             temperature=0.3
         )
@@ -214,7 +220,7 @@ def process_pdfs(pdf_files, is_demo, progress=gr.Progress()):
                 yield f"Ошибка чтения: {fname}", None, render_console(console_html)
                 continue
 
-            console_html += log_line(f"Запрос к локальной модели {OLLAMA_MODEL}...")
+            console_html += log_line(f"Запрос к локальной модели {get_model()}...")
             progress((i + 0.5) / len(files_to_process), desc=f"LLM: {fname}")
             yield f"Обработка {i + 1} из {len(files_to_process)}: {fname}", None, render_console(console_html)
             biblio_data = call_biblio_agent(text)
@@ -296,7 +302,7 @@ def process_referats(pdf_files, is_demo, progress=gr.Progress()):
                 yield f"Ошибка чтения: {fname}", last_text, None, render_console(console_html)
                 continue
 
-            console_html += log_line(f"Генерация реферата ({OLLAMA_MODEL}, локально)...")
+            console_html += log_line(f"Генерация реферата ({get_model()}, локально)...")
             progress((i + 0.5) / len(files_to_process), desc=f"LLM: {fname}")
             yield f"Обработка {i + 1} из {len(files_to_process)}: {fname}", last_text, None, render_console(console_html)
             referat_text = call_referat_agent(text)
@@ -322,6 +328,67 @@ def process_referats(pdf_files, is_demo, progress=gr.Progress()):
 
     console_html += log_success(f"Архив собран: {len(output_files)} файлов")
     yield "Рефераты готовы! Скачайте архив.", last_text, zip_path, render_console(console_html)
+
+# --- Администрирование: Ollama ---
+def normalize_base(url):
+    url = (url or "").strip().rstrip("/")
+    if url.endswith("/v1"):
+        url = url[:-3]
+    if url and not url.startswith("http://") and not url.startswith("https://"):
+        url = "http://" + url
+    return url
+
+def rebuild_client():
+    global client
+    client = OpenAI(base_url=RUNTIME_CONFIG["base_url"], api_key="ollama")
+
+def check_ollama(base_url):
+    base = normalize_base(base_url)
+    try:
+        version = httpx.get(f"{base}/api/version", timeout=3.0).json().get("version", "?")
+        tags = httpx.get(f"{base}/api/tags", timeout=5.0).json()
+        models = sorted(m.get("name", "") for m in tags.get("models", []))
+        new_api_base = base + "/v1"
+        if RUNTIME_CONFIG["base_url"] != new_api_base:
+            RUNTIME_CONFIG["base_url"] = new_api_base
+            rebuild_client()
+        html = f"<div class='admin-status admin-ok'>Ollama онлайн — версия {version} · {base}</div>"
+        return html, models, get_model()
+    except Exception:
+        html = (f"<div class='admin-status admin-err'>Ollama недоступна: {base}"
+                f"<br><br>Проверьте адрес. Формат: <b>http://IP:порт</b>, порт по умолчанию 11434."
+                f"<br>Примеры: <b>http://localhost:11434</b> · <b>http://192.168.1.50:11434</b>"
+                f"<br>Если сервер локальный — запустите его: <b>ollama serve</b></div>")
+        return html, [], get_model()
+
+def refresh_models(base_url):
+    html, models, cur = check_ollama(base_url)
+    return html, gr.update(choices=models, value=cur if cur in models else None), f"Активная модель: **{get_model()}**"
+
+def apply_model(model_name, base_url):
+    if model_name:
+        RUNTIME_CONFIG["model"] = model_name
+    return refresh_models(base_url)
+
+def pull_model(model_name, base_url):
+    import subprocess
+    name = (model_name or "").strip()
+    if not name:
+        yield "Введите имя модели, например: qwen2.5:7b"
+        return
+    host = normalize_base(base_url).replace("http://", "").replace("https://", "")
+    env = {**os.environ, "OLLAMA_HOST": host}
+    out = ""
+    try:
+        proc = subprocess.Popen(["ollama", "pull", name], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, env=env)
+        for line in proc.stdout:
+            out += line
+            yield out[-3000:]
+        proc.wait()
+        out += f"\n=== {'Установлена' if proc.returncode == 0 else 'Ошибка установки'}: {name} ==="
+        yield out[-3000:]
+    except FileNotFoundError:
+        yield "Команда ollama не найдена. Установите Ollama: https://ollama.com"
 
 # --- Данные экосистемы ---
 AGENTS_DATA = [
@@ -447,6 +514,10 @@ h1, h2, h3 { font-family: 'PT Serif', 'Georgia', serif !important; color: #2a4d6
 
 .gr-button-primary { background-color: #2a4d6e !important; border: none !important; border-radius: 4px !important; color: white !important; font-weight: bold !important; }
 .gr-button-secondary { background-color: #ffffff !important; border: 2px solid #2a4d6e !important; border-radius: 4px !important; color: #2a4d6e !important; font-weight: bold !important; }
+.nav-btn-admin { font-size: 13px !important; padding: 8px 14px !important; color: #7a868e !important; }
+.admin-status { padding: 12px 16px; border-radius: 4px; margin-bottom: 15px; font-family: 'JetBrains Mono', monospace; font-size: 13px; }
+.admin-ok { background: #e8f5e9; color: #1b5e20; border: 1px solid #a5d6a7; }
+.admin-err { background: #fdecea; color: #b71c1c; border: 1px solid #ef9a9a; }
 label { color: #333d44 !important; font-weight: bold !important; }
 
 /* Темнее описательные тексты (gr.Markdown) */
@@ -484,6 +555,9 @@ with gr.Blocks(css=custom_css) as demo:
             for name in ["Мета-Мастер", "Реестр-Бот", "Рукопись-ИИ"]:
                 gr.Button(f"• {name}", interactive=False, elem_classes=["nav-btn-disabled"])
             gr.HTML("<div class='sidebar-note'>…и ещё 28 агентов.<br>Полный перечень — в разделе<br>«Кластеры агентов».</div>")
+
+            gr.HTML("<div class='sidebar-sep'></div>")
+            nav_admin = gr.Button("Администрирование", variant="secondary", elem_classes=["nav-btn", "nav-btn-idle", "nav-btn-admin"])
 
         # ===== ОСНОВНАЯ ОБЛАСТЬ =====
         with gr.Column(scale=4, elem_classes=["main-area"]):
@@ -567,10 +641,40 @@ with gr.Blocks(css=custom_css) as demo:
                 ref_run_btn.click(fn=process_referats, inputs=[ref_pdf_input, gr.State(False)], outputs=[ref_status, ref_preview, ref_file, ref_console])
                 ref_demo_btn.click(fn=process_referats, inputs=[ref_pdf_input, gr.State(True)], outputs=[ref_status, ref_preview, ref_file, ref_console])
 
+            # --- Страница: Администрирование ---
+            with gr.Column(visible=False) as page_admin:
+                gr.Markdown("## Администрирование — локальная Ollama")
+                gr.Markdown("Состояние локального ИИ-движка, выбор активной модели и установка новых. Все операции выполняются на этом компьютере.")
+                admin_url_input = gr.Textbox(
+                    label="Адрес сервера Ollama",
+                    value=OLLAMA_BASE_URL.replace("/v1", "").rstrip("/"),
+                    placeholder="http://localhost:11434",
+                    info="Формат: http://IP:порт (порт по умолчанию 11434). Примеры: http://localhost:11434 или http://192.168.1.50:11434",
+                    scale=3
+                )
+                admin_status = gr.HTML("<div class='admin-status'>Нажмите «Проверить соединение».</div>")
+                admin_check_btn = gr.Button("Проверить соединение", variant="secondary")
+                gr.Markdown("### Модели")
+                admin_model_dd = gr.Dropdown(label="Установленные модели", choices=[], interactive=True)
+                with gr.Row():
+                    admin_refresh_btn = gr.Button("Обновить список", variant="secondary")
+                    admin_apply_btn = gr.Button("Сделать активной", variant="primary")
+                admin_active_md = gr.Markdown(f"Активная модель: **{get_model()}**")
+                gr.Markdown("### Установка новой модели")
+                with gr.Row():
+                    admin_pull_input = gr.Textbox(label="Имя модели", placeholder="например: qwen2.5:7b", scale=3)
+                    admin_pull_btn = gr.Button("Установить (ollama pull)", variant="primary", scale=1)
+                admin_pull_console = gr.Textbox(label="Вывод ollama pull", lines=10, interactive=False)
+
+                admin_check_btn.click(fn=refresh_models, inputs=[admin_url_input], outputs=[admin_status, admin_model_dd, admin_active_md])
+                admin_refresh_btn.click(fn=refresh_models, inputs=[admin_url_input], outputs=[admin_status, admin_model_dd, admin_active_md])
+                admin_apply_btn.click(fn=apply_model, inputs=[admin_model_dd, admin_url_input], outputs=[admin_status, admin_model_dd, admin_active_md])
+                admin_pull_btn.click(fn=pull_model, inputs=[admin_pull_input, admin_url_input], outputs=[admin_pull_console])
+
 
     # --- Логика навигации (внутри Blocks-контекста!) ---
-    NAV_BUTTONS = [("home", nav_home), ("clusters", nav_clusters), ("biblio", nav_biblio), ("referat", nav_referat)]
-    NAV_PAGES = [("home", page_home), ("clusters", page_clusters), ("biblio", page_biblio), ("referat", page_referat)]
+    NAV_BUTTONS = [("home", nav_home), ("clusters", nav_clusters), ("biblio", nav_biblio), ("referat", nav_referat), ("admin", nav_admin)]
+    NAV_PAGES = [("home", page_home), ("clusters", page_clusters), ("biblio", page_biblio), ("referat", page_referat), ("admin", page_admin)]
 
     def navigate(target):
         def _nav():
@@ -585,6 +689,8 @@ with gr.Blocks(css=custom_css) as demo:
     nav_clusters.click(navigate("clusters"), inputs=None, outputs=NAV_OUTPUTS)
     nav_biblio.click(navigate("biblio"), inputs=None, outputs=NAV_OUTPUTS)
     nav_referat.click(navigate("referat"), inputs=None, outputs=NAV_OUTPUTS)
+    nav_admin.click(navigate("admin"), inputs=None, outputs=NAV_OUTPUTS)
+    demo.load(fn=refresh_models, inputs=[admin_url_input], outputs=[admin_status, admin_model_dd, admin_active_md])
     home_cta.click(navigate("clusters"), inputs=None, outputs=NAV_OUTPUTS)
     for target, btn in cluster_nav_buttons:
         btn.click(navigate(target), inputs=None, outputs=NAV_OUTPUTS)
