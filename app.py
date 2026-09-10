@@ -460,8 +460,8 @@ label { color: #333d44 !important; font-weight: bold !important; }
 /* Зелёная подсветка активных агентов в кластерах */
 .agent-btn-active { border: 1px solid #66bb6a !important; background: #eaf7ea !important; }
 .agent-btn-active:hover { background: #d5eed5 !important; }
-.agent-btn-active::before { content: "\25CF  "; color: #2e7d32; font-weight: bold; }
-.agent-btn-inactive::before { content: "\25CB  "; color: #95a1aa; font-weight: bold; }
+.agent-btn-active::before { content: "●  "; color: #2e7d32; font-weight: bold; }
+.agent-btn-inactive::before { content: "○  "; color: #95a1aa; font-weight: bold; }
 .gradio-container .prose strong { color: #1f2a30 !important; }
 .gradio-container .prose b { color: #1f2a30 !important; }
 """
