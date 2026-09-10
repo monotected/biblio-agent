@@ -51,30 +51,40 @@ def extract_text_from_pdf(pdf_path, max_pages=3):
             text += page.extract_text() + "\n"
     return text
 
-def call_biblio_agent(text):
+def parse_json_safe(text):
+    """Парсит JSON из ответа модели, устойчив к markdown-обёрткам ```json ... ```."""
+    text = (text or "").strip()
     try:
-        response = client.chat.completions.create(
-            model=get_model(),
-            messages=[{"role": "user", "content": AGENT_PROMPT + text[:MAX_CHARS]}],
-            temperature=0.1,
-            format="json"
-        )
-        return json.loads(response.choices[0].message.content)
+        return json.loads(text)
     except json.JSONDecodeError:
-        return {"error": "Модель вернула некорректный JSON. Попробуйте другую модель."}
-    except Exception as e:
-        return {"error": f"Ошибка Ollama: {e}. Проверьте: ollama run {get_model()}"}
+        pass
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end > start:
+        try:
+            return json.loads(text[start:end + 1])
+        except json.JSONDecodeError:
+            pass
+    return None
 
-def call_referat_agent(text):
-    try:
-        response = client.chat.completions.create(
-            model=get_model(),
-            messages=[{"role": "user", "content": REFERAT_PROMPT + text[:MAX_CHARS_REFERAT]}],
-            temperature=0.3
-        )
-        return response.choices[0].message.content.strip()
-    except Exception:
-        return None
+def call_biblio_agent(text):
+    """Вызов LLM: сначала JSON-режим (response_format), при ошибке — без него."""
+    messages = [{"role": "user", "content": AGENT_PROMPT + text[:MAX_CHARS]}]
+    last_err = None
+    for extra in ({"response_format": {"type": "json_object"}}, {}):
+        try:
+            response = client.chat.completions.create(
+                model=get_model(),
+                messages=messages,
+                temperature=0.1,
+                **extra
+            )
+            data = parse_json_safe(response.choices[0].message.content)
+            if data is not None:
+                return data
+            last_err = "модель вернула некорректный JSON"
+        except Exception as e:
+            last_err = str(e)
+    return {"error": f"Ошибка Ollama: {last_err}. Проверьте: ollama run {get_model()}"}
 
 # --- Демо-данные ---
 def get_demo_data():
